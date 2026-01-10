@@ -1,132 +1,101 @@
 // api/video.js
-
 export default async function handler(req, res) {
-  try {
-    const inputUrl = req.query.url;
+  // ✅ Allow CORS (optional but helpful for Android app / browser)
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    if (!inputUrl) {
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  try {
+    const instaUrl = req.query.url;
+
+    if (!instaUrl) {
       return res.status(400).json({
         status: "error",
-        message: "URL is required. Example: /api/video?url=https://instagram.com/reel/xxxx",
+        message: "URL is required. Example: /api/video?url=INSTAGRAM_LINK",
       });
     }
 
-    // ✅ Make sure url is decoded properly
-    const decodedUrl = decodeURIComponent(inputUrl);
+    // ✅ Read ENV variables from Vercel
+    const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
+    const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST;
 
-    // ✅ Try primary provider first
-    let result = await tryPrimaryProvider(decodedUrl);
-
-    // ✅ If primary fails, try backup
-    if (!result?.success) {
-      result = await tryBackupProvider(decodedUrl);
-    }
-
-    // ✅ If both fail
-    if (!result?.success) {
+    if (!RAPIDAPI_KEY || !RAPIDAPI_HOST) {
       return res.status(500).json({
         status: "error",
-        input: decodedUrl,
-        message: "All providers failed. Instagram may have updated protection.",
+        message:
+          "Missing env variables. Add RAPIDAPI_KEY and RAPIDAPI_HOST in Vercel Environment Variables then Redeploy.",
       });
     }
 
+    // ✅ RapidAPI endpoint (as per your screenshot)
+    // Example in RapidAPI snippet:
+    // https://instagram-reels-downloader-api.p.rapidapi.com/download?url=...
+    const apiUrl =
+      "https://instagram-reels-downloader-api.p.rapidapi.com/download?url=" +
+      encodeURIComponent(instaUrl);
+
+    const response = await fetch(apiUrl, {
+      method: "GET",
+      headers: {
+        "x-rapidapi-key": RAPIDAPI_KEY,
+        "x-rapidapi-host": RAPIDAPI_HOST,
+      },
+    });
+
+    const data = await response.json();
+
+    // ❌ If API gives error
+    if (!response.ok) {
+      return res.status(response.status).json({
+        status: "error",
+        message: "RapidAPI request failed",
+        rapidapi: data,
+      });
+    }
+
+    // ✅ Try to extract MP4 / downloadable url from response
+    // Different APIs return different keys. We'll handle most common patterns.
+
+    let downloadUrl = null;
+
+    // Common keys
+    if (data?.download_url) downloadUrl = data.download_url;
+    else if (data?.url) downloadUrl = data.url;
+    else if (data?.video) downloadUrl = data.video;
+    else if (data?.result?.download_url) downloadUrl = data.result.download_url;
+    else if (data?.result?.url) downloadUrl = data.result.url;
+
+    // If array / list
+    else if (Array.isArray(data?.links) && data.links.length > 0) {
+      downloadUrl = data.links[0]?.url || data.links[0];
+    } else if (Array.isArray(data?.result) && data.result.length > 0) {
+      downloadUrl = data.result[0]?.url || data.result[0];
+    }
+
+    // Sometimes API gives multiple qualities
+    else if (Array.isArray(data?.medias) && data.medias.length > 0) {
+      // pick first video media
+      const videoItem = data.medias.find((m) => m?.url) || data.medias[0];
+      downloadUrl = videoItem?.url;
+    }
+
+    // ✅ If still no url found
+    if (!downloadUrl) {
+      return res.status(200).json({
+        status: "success",
+        message:
+          "API responded but mp4 link not found in response. Check rapidapi output keys.",
+        input: instaUrl,
+        rapidapi_raw: data,
+      });
+    }
+
+    // ✅ Final success response
     return res.status(200).json({
       status: "success",
-      input: decodedUrl,
-      provider: result.provider,
-      mp4: result.mp4,
-      message: "MP4 link extracted ✅",
-    });
-  } catch (err) {
-    return res.status(500).json({
-      status: "error",
-      message: "Server error",
-      error: err?.message || String(err),
-    });
-  }
-}
-
-/* ---------------------------------------
-   ✅ Provider #1 (Primary)
-   Example: RapidAPI Instagram Downloader
----------------------------------------- */
-
-async function tryPrimaryProvider(url) {
-  try {
-    // ✅ Replace with your Provider API endpoint
-    const API_URL = "https://YOUR_PRIMARY_PROVIDER_ENDPOINT";
-
-    // ✅ Example request body
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-
-        // ✅ Put your API key in Vercel ENV
-        "X-RapidAPI-Key": process.env.PRIMARY_API_KEY,
-        "X-RapidAPI-Host": process.env.PRIMARY_API_HOST,
-      },
-      body: JSON.stringify({ url }),
-    });
-
-    if (!response.ok) {
-      return { success: false, provider: "primary", error: "Primary API failed" };
-    }
-
-    const data = await response.json();
-
-    // ✅ IMPORTANT:
-    // Provider response format differs.
-    // You must map mp4 url from provider response.
-    // Example:
-    const mp4 = data?.mp4 || data?.download_url || data?.result?.mp4;
-
-    if (!mp4) {
-      return { success: false, provider: "primary", error: "No MP4 found" };
-    }
-
-    return { success: true, provider: "primary", mp4 };
-  } catch (e) {
-    return { success: false, provider: "primary", error: e?.message };
-  }
-}
-
-/* ---------------------------------------
-   ✅ Provider #2 (Backup)
-   Example: another RapidAPI / alternate service
----------------------------------------- */
-
-async function tryBackupProvider(url) {
-  try {
-    const API_URL = "https://YOUR_BACKUP_PROVIDER_ENDPOINT";
-
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-
-        // ✅ Put your backup API key in Vercel ENV
-        "X-RapidAPI-Key": process.env.BACKUP_API_KEY,
-        "X-RapidAPI-Host": process.env.BACKUP_API_HOST,
-      },
-      body: JSON.stringify({ url }),
-    });
-
-    if (!response.ok) {
-      return { success: false, provider: "backup", error: "Backup API failed" };
-    }
-
-    const data = await response.json();
-
-    const mp4 = data?.mp4 || data?.download_url || data?.result?.mp4;
-
-    if (!mp4) {
-      return { success: false, provider: "backup", error: "No MP4 found" };
-    }
-
-    return { success: true, provider: "backup", mp4 };
-  } catch (e) {
-    return { success: false, provider: "backup", error: e?.message };
-  }
-}
+      input: instaUrl,
+      mp4: downloadUrl,
