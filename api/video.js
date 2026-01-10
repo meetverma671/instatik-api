@@ -1,6 +1,7 @@
 // api/video.js
+
 export default async function handler(req, res) {
-  // ✅ Allow CORS (optional but helpful for Android app / browser)
+  // ✅ Allow CORS (helps Android app / browser)
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -31,9 +32,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ✅ RapidAPI endpoint (as per your screenshot)
-    // Example in RapidAPI snippet:
-    // https://instagram-reels-downloader-api.p.rapidapi.com/download?url=...
+    // ✅ RapidAPI endpoint
     const apiUrl =
       "https://instagram-reels-downloader-api.p.rapidapi.com/download?url=" +
       encodeURIComponent(instaUrl);
@@ -48,7 +47,7 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // ❌ If API gives error
+    // ❌ If RapidAPI gives error
     if (!response.ok) {
       return res.status(response.status).json({
         status: "error",
@@ -58,8 +57,6 @@ export default async function handler(req, res) {
     }
 
     // ✅ Try to extract MP4 / downloadable url from response
-    // Different APIs return different keys. We'll handle most common patterns.
-
     let downloadUrl = null;
 
     // Common keys
@@ -78,7 +75,6 @@ export default async function handler(req, res) {
 
     // Sometimes API gives multiple qualities
     else if (Array.isArray(data?.medias) && data.medias.length > 0) {
-      // pick first video media
       const videoItem = data.medias.find((m) => m?.url) || data.medias[0];
       downloadUrl = videoItem?.url;
     }
@@ -99,3 +95,13 @@ export default async function handler(req, res) {
       status: "success",
       input: instaUrl,
       mp4: downloadUrl,
+      rapidapi_raw: data, // (optional) remove later after testing
+    });
+  } catch (err) {
+    return res.status(500).json({
+      status: "error",
+      message: "Server error",
+      error: err?.message || String(err),
+    });
+  }
+}
