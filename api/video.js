@@ -1,7 +1,7 @@
 // api/video.js
 
 export default async function handler(req, res) {
-  // ✅ Allow CORS (helps Android app / browser)
+  // ✅ CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ✅ Read ENV variables from Vercel
+    // ✅ ENV from Vercel
     const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
     const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST;
 
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // ❌ If RapidAPI gives error
+    // ❌ RapidAPI error
     if (!response.ok) {
       return res.status(response.status).json({
         status: "error",
@@ -56,52 +56,48 @@ export default async function handler(req, res) {
       });
     }
 
-    // ✅ Try to extract MP4 / downloadable url from response
+    // ✅ Extract download url from response
     let downloadUrl = null;
 
-    // Common keys
     if (data?.download_url) downloadUrl = data.download_url;
     else if (data?.url) downloadUrl = data.url;
     else if (data?.video) downloadUrl = data.video;
     else if (data?.result?.download_url) downloadUrl = data.result.download_url;
     else if (data?.result?.url) downloadUrl = data.result.url;
 
-    // If array / list
     else if (Array.isArray(data?.links) && data.links.length > 0) {
       downloadUrl = data.links[0]?.url || data.links[0];
     } else if (Array.isArray(data?.result) && data.result.length > 0) {
       downloadUrl = data.result[0]?.url || data.result[0];
-    }
-
-    // Sometimes API gives multiple qualities
-    else if (Array.isArray(data?.medias) && data.medias.length > 0) {
+    } else if (Array.isArray(data?.medias) && data.medias.length > 0) {
       const videoItem = data.medias.find((m) => m?.url) || data.medias[0];
       downloadUrl = videoItem?.url;
     }
 
-    // ✅ If still no url found
+    // ✅ if mp4 not found
     if (!downloadUrl) {
       return res.status(200).json({
         status: "success",
-        message:
-          "API responded but mp4 link not found in response. Check rapidapi output keys.",
         input: instaUrl,
+        message:
+          "API working but MP4 not found. Check RapidAPI response keys.",
         rapidapi_raw: data,
       });
     }
 
-    // ✅ Final success response
+    // ✅ SUCCESS (MP4)
     return res.status(200).json({
       status: "success",
       input: instaUrl,
+      type: "instagram",
       mp4: downloadUrl,
-      rapidapi_raw: data, // (optional) remove later after testing
+      message: "MP4 link generated ✅",
     });
   } catch (err) {
     return res.status(500).json({
       status: "error",
       message: "Server error",
-      error: err?.message || String(err),
+      error: err?.message || err,
     });
   }
 }
