@@ -20,7 +20,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ✅ ENV from Vercel
+    // ✅ Read ENV variables from Vercel
     const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
     const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST;
 
@@ -28,11 +28,13 @@ export default async function handler(req, res) {
       return res.status(500).json({
         status: "error",
         message:
-          "Missing env variables. Add RAPIDAPI_KEY and RAPIDAPI_HOST in Vercel Environment Variables then Redeploy.",
+          "Missing env variables. Add RAPIDAPI_KEY and RAPIDAPI_HOST in Vercel → Settings → Environment Variables, then Redeploy.",
+        gotKey: !!RAPIDAPI_KEY,
+        gotHost: !!RAPIDAPI_HOST,
       });
     }
 
-    // ✅ RapidAPI endpoint
+    // ✅ RapidAPI endpoint (your selected API)
     const apiUrl =
       "https://instagram-reels-downloader-api.p.rapidapi.com/download?url=" +
       encodeURIComponent(instaUrl);
@@ -47,23 +49,28 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // ❌ RapidAPI error
+    // ❌ RapidAPI error case
     if (!response.ok) {
       return res.status(response.status).json({
         status: "error",
         message: "RapidAPI request failed",
-        rapidapi: data,
+        rapidapi_status: response.status,
+        rapidapi_response: data,
       });
     }
 
-    // ✅ Extract download url from response
+    // ✅ Extract mp4 link from response (different APIs return different keys)
     let downloadUrl = null;
 
     if (data?.download_url) downloadUrl = data.download_url;
+    else if (data?.mp4) downloadUrl = data.mp4;
     else if (data?.url) downloadUrl = data.url;
     else if (data?.video) downloadUrl = data.video;
+
     else if (data?.result?.download_url) downloadUrl = data.result.download_url;
+    else if (data?.result?.mp4) downloadUrl = data.result.mp4;
     else if (data?.result?.url) downloadUrl = data.result.url;
+    else if (data?.result?.video) downloadUrl = data.result.video;
 
     else if (Array.isArray(data?.links) && data.links.length > 0) {
       downloadUrl = data.links[0]?.url || data.links[0];
@@ -74,28 +81,21 @@ export default async function handler(req, res) {
       downloadUrl = videoItem?.url;
     }
 
-    // ✅ if mp4 not found
+    // ✅ if mp4 not found, return raw response (so we can see real keys)
     if (!downloadUrl) {
       return res.status(200).json({
         status: "success",
-        input: instaUrl,
         message:
-          "API working but MP4 not found. Check RapidAPI response keys.",
+          "RapidAPI response OK but mp4 link not found. See rapidapi_raw keys.",
+        input: instaUrl,
         rapidapi_raw: data,
       });
     }
-return res.status(200).json({
-  status: "debug",
-  gotKey: !!RAPIDAPI_KEY,
-  gotHost: !!RAPIDAPI_HOST,
-  hostValue: RAPIDAPI_HOST,
-});
 
-    // ✅ SUCCESS (MP4)
+    // ✅ Final response
     return res.status(200).json({
       status: "success",
       input: instaUrl,
-      type: "instagram",
       mp4: downloadUrl,
       message: "MP4 link generated ✅",
     });
@@ -103,7 +103,7 @@ return res.status(200).json({
     return res.status(500).json({
       status: "error",
       message: "Server error",
-      error: err?.message || err,
+      error: String(err),
     });
   }
 }
