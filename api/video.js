@@ -1,4 +1,5 @@
 // api/video.js
+const VERSION = "v3-11Jan-TEST-1";
 
 export default async function handler(req, res) {
   // ✅ CORS
@@ -95,6 +96,7 @@ export default async function handler(req, res) {
     // ✅ Final response
     return res.status(200).json({
       status: "success",
+      version: VERSION,
       input: instaUrl,
       mp4: downloadUrl,
       message: "MP4 link generated ✅",
