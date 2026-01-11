@@ -84,6 +84,12 @@ export default async function handler(req, res) {
         rapidapi_raw: data,
       });
     }
+return res.status(200).json({
+  status: "debug",
+  gotKey: !!RAPIDAPI_KEY,
+  gotHost: !!RAPIDAPI_HOST,
+  hostValue: RAPIDAPI_HOST,
+});
 
     // ✅ SUCCESS (MP4)
     return res.status(200).json({
